@@ -28,6 +28,8 @@ sales <- dbGetQuery(con, "SELECT * from b2w_schema.sales_agg")
 price_def <- dbGetQuery(con, "SELECT * from b2w_schema.comp_prices where pay_type = 1")
 price_im <- dbGetQuery(con, "SELECT * from b2w_schema.comp_prices where pay_type = 2")
 
+# Removing variables
+rm(con,drv,pw,username)
 
 #=================================
 # Data Treatment
@@ -130,7 +132,7 @@ my_title <- paste ("Qty sold of Product", my_product, "given Competitor's price"
 
 p <- ggplot(scp_df, aes(competitor_price, qty_order)) + geom_point(size = 1.5)
 p <- p + theme_bw()  
-p <- p + labs(title = my_title, x = "Price", y = "Qty sold for")
+p <- p + labs(title = my_title, x = "Price", y = "Quantity sold")
 p <- p + facet_wrap(~competitor, scales = "free") 
 p
 
@@ -141,13 +143,20 @@ ggsave(paste(my_product, "qty_comp_price.png", sep = "_"), p, path = img_path)
 scp_df <- merge(sales, price_im, by = c("prod_id", "date_order"), all.y = TRUE)
 my_product <- "P2"
 scp_df <- scp_df[scp_df$prod_id == my_product,] #choosing Product A
-my_title <- paste ("Qty sold of Product", my_product, "given B2W and Competitor's price", sep = " ")
+my_title <- paste ("Daily Sales of", my_product, "given B2W and Competitor's price", sep = " ")
+log_qty <- TRUE
 
 # Colored scatter plot
 p <- ggplot(scp_df, aes(price, competitor_price)) + theme_bw()
-p <- p + geom_point(aes(colour = qty_order)) + scale_colour_gradient(low = "blue")
-p <- p + labs(title = my_title, x = "B2W Price", y = "Competitor's Price")
+if (log_qty) {
+  p <- p + geom_point(aes(colour = log(qty_order))) + labs(color = "Log(Daily Sales)")
+} else {
+  p <- p + geom_point(aes(colour = qty_order)) + labs(color = "Daily Sales")
+}
+p <- p + scale_colour_gradient(low = "red", high = "green")
+p <- p + labs(title = my_title, x = "B2W's Price", y = "Competitor's Price")
 p <- p + facet_wrap(~competitor, scales = "free") 
+p <- p + geom_abline(intercept = 0, slope = 1)
 p
 
 ggsave(paste(my_product, "qty_b2w_and_comp_price.png", sep = "_"), p, path = img_path)
