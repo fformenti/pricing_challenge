@@ -36,7 +36,7 @@ rm(con,drv,pw,username)
 #=================================
 days_of_the_week <- c("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 sales$date_order <- as.Date(sales$date_order)
-sales$day_week <- trimws(sales$day_week) # Lembrete: acertar essa gambiarra na base de dados
+sales$day_week <- trimws(sales$day_week)
 sales$day_week <- factor(sales$day_week, levels = days_of_the_week, ordered=TRUE)
 sales$year_month = floor_date(sales$date_order, unit = c("month"))
 
@@ -54,45 +54,52 @@ price_im <- aggregate(x = list(competitor_price = price_im$competitor_price),
 # Exploratory Plots
 #=================================
 
-# ------- Times Series ---------
+brand_green <- "#00e68a"
 
+# ------- Times Series ---------
 # Daily 
-p <- ggplot(sales, aes(date_order, qty_order)) + geom_point(size = 1.5)
-p <- p + theme_bw() #+ scale_color_manual(values=c(dodgerblue4"))
-p <- p + labs(title = "Daily Sales", x = "", y = "Quantity")
+p <- ggplot(sales, aes(date_order, qty_order)) 
+p <- p + theme_bw() + geom_line(colour = brand_green)
+p <- p + labs(title = "Daily Sales 2015", x = "", y = "Quantity")
 p <- p + facet_wrap(~prod_id, scales = "free_y")
 p
 
-ggsave("daily_sales.png", p, path = img_path)
+ggsave("daily_sales_line.png", p, path = img_path)
+
+p <- ggplot(sales, aes(date_order, qty_order)) 
+p <- p + theme_bw() + geom_point(colour = brand_green)
+p <- p + labs(title = "Daily Sales 2015 \n", x = "", y = "Quantity")
+p <- p + facet_wrap(~prod_id, scales = "free_y")
+p
+
+ggsave("daily_sales_point.png", p, path = img_path)
 
 # Monthly
 monthly_sales <- aggregate(x = list(qty_order = sales$qty_order), 
                            by = list(year_month = sales$year_month, prod_id = sales$prod_id), 
                            FUN = mean, na.rm = TRUE)
 
-p <- ggplot(monthly_sales, aes(year_month, qty_order)) + geom_line()
-p <- p + theme_bw() 
-p <- p + labs(title = "Monthly Sales", x = "", y = "Quantity")
+p <- ggplot(monthly_sales, aes(year_month, qty_order)) + theme_bw()
+p <- p+ geom_line(colour = brand_green)
+p <- p + labs(title = "Monthly Sales 2015 \n", x = "", y = "Quantity")
 p <- p + facet_wrap(~prod_id, scales = "free_y")
 p
+
+ggsave("monthly_sales.png", p, path = img_path)
 
 # ------- Histograms, Densities and Boxplots ---------
 
 # Competitor's Price BoxPlot per Product
-my_title <- "Competitor's Price BoxPlot per Product"
+my_title <- "Competitor's Price BoxPlot per Product \n"
 p <- ggplot(price_im, aes(competitor, competitor_price)) + theme_bw() 
 p <- p + geom_boxplot() + facet_wrap(~prod_id, scales = "free")
 p <- p + labs(title = my_title, x = "Competitor", y = "Price")
 p
 
-# Recheck if there are outliers on the python script
-# removing rows with outliers (bad approach. I will replace outliers later)
-#price_im <- price_im[price_im$competitor_price < 10000,]
-
 ggsave("comp_boxplot.png", p, path = img_path)
 
 # Competitor's Price Density per Product
-my_title <- "Competitor's Price Density per Product"
+my_title <- "Competitor's Price Density Plot per Product \n"
 p <- ggplot(price_im, aes(competitor_price, fill = competitor, colour = competitor))
 p <- p + geom_density(alpha = 0.1) + facet_wrap(~prod_id, scales = "free") + theme_bw()  
 p <- p + labs(title = my_title, x = "Competitor's Price", y = "")
@@ -105,21 +112,22 @@ ggsave("comp_density.png", p, path = img_path)
 # Qty sold of Product A given its price
 p <- ggplot(sales, aes(price, qty_order)) + geom_point(size = 1.5)
 p <- p + theme_bw()  
-p <- p + labs(title = "Quantity x Price", x = "Price", y = "Quantity")
+p <- p + labs(title = "Quantity x Price \n", x = "Price", y = "Quantity")
 p <- p + facet_wrap(~prod_id, scales = "free")
+p <- p + geom_smooth(se = FALSE, colour = brand_green)
 p
 
 ggsave("qty_price.png", p, path = img_path)
 
 # Qty sold of Product A given B2W's price of Other Products
 scp_df <- merge(sales, sales[,c("prod_id","date_order","price")], by = c("date_order"), all= TRUE)
-my_product <- "P2"
+my_product <- "P1"
 scp_df <- scp_df[scp_df$prod_id.x == my_product,] #choosing Product A
-my_title <- paste ("Qty sold of Product", my_product, "given B2W's price of Other Products", sep = " ")
+my_title <- paste ("Quantity sold of ", my_product, "given B2W's price of Other Products \n", sep = " ")
 p <- ggplot(scp_df, aes(price.y, qty_order)) + geom_point(size = 1.5)
 p <- p + theme_bw()  
-p <- p + labs(title = my_title, x = "Price", y = paste("Qty sold for", my_product, sep = " "))
-p <- p + facet_wrap(~prod_id.y, scales = "free") 
+p <- p + labs(title = my_title, x = "Price", y = paste("Quantity sold for", my_product, sep = " "))
+p <- p + facet_wrap(~prod_id.y, scales = "free") + geom_smooth(se = FALSE, colour = brand_green)
 p
 
 ggsave(paste(my_product, "qty_b2w_price.png", sep = "_"), p, path = img_path)
@@ -128,7 +136,7 @@ ggsave(paste(my_product, "qty_b2w_price.png", sep = "_"), p, path = img_path)
 scp_df <- merge(sales, price_im, by = c("prod_id", "date_order"), all.y = TRUE)
 my_product <- "P2"
 scp_df <- scp_df[scp_df$prod_id == my_product,] #choosing Product A
-my_title <- paste ("Qty sold of Product", my_product, "given Competitor's price", sep = " ")
+my_title <- paste ("Qty sold of Product", my_product, "given Competitor's price \n", sep = " ")
 
 p <- ggplot(scp_df, aes(competitor_price, qty_order)) + geom_point(size = 1.5)
 p <- p + theme_bw()  
@@ -141,10 +149,10 @@ ggsave(paste(my_product, "qty_comp_price.png", sep = "_"), p, path = img_path)
 
 # Qty sold of Product A given B2W's and competitor's price for Product A
 scp_df <- merge(sales, price_im, by = c("prod_id", "date_order"), all.y = TRUE)
-my_product <- "P2"
+my_product <- "P1"
 scp_df <- scp_df[scp_df$prod_id == my_product,] #choosing Product A
-my_title <- paste ("Daily Sales of", my_product, "given B2W and Competitor's price", sep = " ")
-log_qty <- TRUE
+my_title <- paste ("Daily Sales of", my_product, "given B2W and Competitor's price \n", sep = " ")
+log_qty <- FALSE
 
 # Colored scatter plot
 p <- ggplot(scp_df, aes(price, competitor_price)) + theme_bw()
@@ -153,7 +161,7 @@ if (log_qty) {
 } else {
   p <- p + geom_point(aes(colour = qty_order)) + labs(color = "Daily Sales")
 }
-p <- p + scale_colour_gradient(low = "red", high = "green")
+p <- p + scale_colour_gradient(low = "black", high = brand_green)
 p <- p + labs(title = my_title, x = "B2W's Price", y = "Competitor's Price")
 p <- p + facet_wrap(~competitor, scales = "free") 
 p <- p + geom_abline(intercept = 0, slope = 1)
@@ -177,8 +185,12 @@ weekday_sales <- aggregate(x = list(qty_order = sales$qty_order),
                         by = list(day_week = sales$day_week, prod_id = sales$prod_id), 
                         FUN = mean, na.rm = TRUE)
 
-p <- ggplot(weekday_sales, aes(day_week, qty_order)) + geom_bar(stat = "identity")
-p <- p + theme_bw() + labs(title = "Average Quantity") + facet_wrap(~prod_id, scales = "free_y")
+my_title <-"Average Quantity Sold \n"
+p <- ggplot(weekday_sales, aes(day_week, qty_order)) + theme_bw()
+p <- p + geom_bar(fill = "black", stat = "identity") 
+p <- p + labs(title = my_title, x = "Day of the Week", y = "Quantity Sold")
+#p <- p + scale_colour_gradient(low = "black", high = brand_green)
+p <- p + facet_wrap(~prod_id, scales = "free_y")
 p
 
 ggsave("dow_avg_sales.png", p, path = img_path)
