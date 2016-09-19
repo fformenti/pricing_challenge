@@ -46,7 +46,9 @@ COPY b2w_schema.comp_prices FROM
                   DELIMITER ',' CSV HEADER;
 
 
+-- ----------------------
 -- Fixing which schema to look
+-- ----------------------
 set search_path = 'b2w_schema';
 
 -- ----------------------
@@ -89,13 +91,32 @@ ALTER TABLE sales_agg DROP COLUMN date_order_str RESTRICT;
 ALTER TABLE comp_prices DROP COLUMN DATE_EXTRACTION_str RESTRICT;
 
 
--- Testing
-select * from sales_agg;
-select * from sales;
-select * from comp_prices;
+
+-- Queries for the models
+select PROD_ID,date_order,competitor, min(COMPETITOR_PRICE) as price from comp_prices
+  GROUP BY PROD_ID,date_order,COMPETITOR,PAY_TYPE
+  HAVING PAY_TYPE = 2;
 
 
+-- Queries por presentation
+select prod_id, date_order, qty_order, revenue from sales
+order by prod_id, date_order
+limit 5;
 
+select prod_id, date_order, qty_order, revenue from sales_agg
+order by prod_id, date_order
+limit 5;
 
+select * from comp_prices
+order by prod_id, date_order, COMPETITOR
+limit 5;
 
+select prod_id, date_order, COMPETITOR, PAY_TYPE, count(*) as cnt from comp_prices
+GROUP BY prod_id, date_order, COMPETITOR, PAY_TYPE
+order by cnt DESC
+limit 5;
 
+select prod_id, date_order, COMPETITOR, count(*) as cnt from comp_prices
+GROUP BY prod_id, date_order, COMPETITOR
+order by cnt ASC
+limit 5;

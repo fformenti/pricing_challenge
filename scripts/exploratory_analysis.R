@@ -59,20 +59,13 @@ brand_green <- "#00e68a"
 # ------- Times Series ---------
 # Daily 
 p <- ggplot(sales, aes(date_order, qty_order)) 
-p <- p + theme_bw() + geom_line(colour = brand_green)
-p <- p + labs(title = "Daily Sales 2015", x = "", y = "Quantity")
-p <- p + facet_wrap(~prod_id, scales = "free_y")
-p
-
-ggsave("daily_sales_line.png", p, path = img_path)
-
-p <- ggplot(sales, aes(date_order, qty_order)) 
-p <- p + theme_bw() + geom_point(colour = brand_green)
+p <- p + geom_line(colour = brand_green) + geom_point(colour ="black", size = 1)
 p <- p + labs(title = "Daily Sales 2015 \n", x = "", y = "Quantity")
-p <- p + facet_wrap(~prod_id, scales = "free_y")
+p <- p + facet_wrap(~prod_id, scales = "free_y") + theme_bw()
 p
 
-ggsave("daily_sales_point.png", p, path = img_path)
+ggsave("daily_sales.png", p, path = img_path)
+
 
 # Monthly
 monthly_sales <- aggregate(x = list(qty_order = sales$qty_order), 
@@ -191,10 +184,23 @@ p <- p + geom_bar(fill = "black", stat = "identity")
 p <- p + labs(title = my_title, x = "Day of the Week", y = "Quantity Sold")
 #p <- p + scale_colour_gradient(low = "black", high = brand_green)
 p <- p + facet_wrap(~prod_id, scales = "free_y")
+p <- p + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
 p
 
 ggsave("dow_avg_sales.png", p, path = img_path)
 
+#=================================
+# Plotting Results
+#=================================
+file_path <- "/Users/felipeformentiferreira/Documents/github_portfolio/pricing_challenge/data/output/P1.csv"
+scp_df_wide <- read.csv(file_path, stringsAsFactors = F)
+scp_df <- gather(scp_df_wide, obs_type, qty_sold, Y_pred:Y_test, factor_key=TRUE)
+
+p <- ggplot(scp_df, aes(price, qty_sold)) + geom_point(aes(colour = obs_type))
+p <- p + theme_bw() + scale_color_manual(values=c("goldenrod1","dodgerblue4")) 
+p
+
+ggsave("pred_results_P1.png", p, path = img_path)
 
 #=================================
 # New Features
