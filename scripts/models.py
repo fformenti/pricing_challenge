@@ -24,16 +24,17 @@ def reading(host, DB, username, password):
     query = "SELECT * FROM b2w_schema.sales_agg;"
     sales = psql.read_sql(query, connection)
     # Here I'm only selecting immeadiate pay
-    query = "SELECT prod_id,date_order,competitor, min(competitor_price) as competitor_price            FROM b2w_schema.comp_prices             GROUP BY prod_id,date_order,competitor,pay_type             HAVING pay_type = 2;"
+    query = "SELECT prod_id,date_order,competitor, min(competitor_price) as competitor_price FROM b2w_schema.comp_prices             GROUP BY prod_id,date_order,competitor,pay_type             HAVING pay_type = 2;"
     price_im = psql.read_sql(query, connection)
     return (sales,price_im)
 
 
 class ml_models(object):
 
-    def __init__(self, data, product):
+    def __init__(self, data, product, name):
         self.df = data
         self.product = product
+        self.name = name
 
     def prepare_data(self):
         # selecting a specific product to analyse
@@ -65,17 +66,20 @@ class ml_models(object):
         na_rows = self.df[cols].isnull().sum(axis=1)
         self.df = self.df.ix[na_rows != len(cols)]
         
-    def fill_comp_price_NA(self, col, cols):
-        df = self.df[cols]
-        df.drop(col, axis=1, inplace=True)
-        self.df.loc[:,('aux_col')] = df.mean(axis=1, skipna = True)
-        null_rows = self.df.loc[:,(col)].isnull()
-        self.df.loc[null_rows,(col)] = self.df.loc[null_rows,('aux_col')]
-        self.df.drop('aux_col', axis=1, inplace=True)
+    def fill_comp_price_NA(self, competitors):
+        for comp in competitors:
+            df = self.df[competitors]
+            df.drop(comp, axis=1, inplace=True)
+            self.df.loc[:,('aux_col')] = df.mean(axis=1, skipna = True)
+            null_rows = self.df.loc[:,(comp)].isnull()
+            self.df.loc[null_rows,(comp)] = self.df.loc[null_rows,('aux_col')]
+            self.df.drop('aux_col', axis=1, inplace=True)
     
-    def fill_prod_price_NA(self,col,min_value):
+    def fill_prod_price_NA(self,col):
+        min_value = df[col].min(axis = 0, skipna = True)
         null_rows = self.df.loc[:,(col)].isnull()
         self.df.loc[null_rows,(col)] = min_value
+        
     
     def make_train_test(self,frac = 0.8, random_state = 200):
         # creating a training and test sets
@@ -108,11 +112,20 @@ class ml_models(object):
         if print_mse:
             print "MSE: %.4f" % mean_squared_error(self.Y_test, self.Y_pred)
 
+    def merge_result(self):
+        #d = {'price': self.X_test['price'], 'Y_test': self.Y_test, 'Y_pred': self.Y_pred}
+        d = {'Y_test': self.Y_test, 'Y_pred': self.Y_pred}
+        df = pd.DataFrame(data=d)
+        self.df_test = pd.merge(self.df_test, df, how='left', left_index = True, right_index = True)
+
+    def write_model_results(self, output_path):
+        # Writing the results to output folder
+        self.df_test.to_csv(output_path + self.product + '_' + self.name  + '.csv',index = False)
 
 class GBM(ml_models):
     # Gradient Boosting
     def __init__(self, data, product):
-        ml_models.__init__(self, data, product)
+        ml_models.__init__(self, data, product, name = "GBR")
 
     def fit_gb(self, params):
         # Fit model
@@ -143,7 +156,7 @@ class GBM(ml_models):
 class MLR(ml_models):
     # Multiple linear regression
     def __init__(self, data, product):
-        ml_models.__init__(self, data, product)
+        ml_models.__init__(self, data, product, name = "MLR")
 
     def fit_mlr(self):
         # Fit model
@@ -152,16 +165,16 @@ class MLR(ml_models):
         print self.clf.coef_
 
 
+if __name__ == '__main__':
 
-if __name__ == "__main__":
 
-    # # Analysis
+    # Product List
+    all_products = ['P1','P2','P3','P4','P5','P6','P7','P8','P9']
 
     # Output Path
     output_path = '/Users/felipeformentiferreira/Documents/github_portfolio/pricing_challenge/data/output/'
 
-    # ### Reading Data
-    # User inputs
+    # Database inputs
     host = 'localhost'
     DB = 'postgres'
     username = my_pass.username
@@ -170,19 +183,34 @@ if __name__ == "__main__":
     # Reading tables
     sales, price_im = reading(host, DB, username, password)
 
-    # ### Getting the Competitor's Price
-
     # Reshaping the data to perform a join in order to get Competitor's Prices
     price_im_wide = pd.pivot_table(price_im, index = ['prod_id','date_order'], columns = ['competitor'], values = 'competitor_price')
     price_im_wide.reset_index(inplace = True)
     df = pd.merge(sales, price_im_wide, how='left', on=['prod_id','date_order'])
 
-    # ## Fitting Models
+    # Reshaping the data to perform a join in order to get the Product's Prices
+    day_price_prod = df[['prod_id','date_order','price']]
+    day_price_prod_wide = pd.pivot_table(day_price_prod, index = ['date_order'], columns = ['prod_id'], values = 'price')
+    day_price_prod_wide.reset_index(inplace = True)
+    df = pd.merge(df, day_price_prod_wide, how='left', on=['date_order'])
 
-    # ### P1
 
-    # #### Linear Regression (Baseline)
-    mlr = MLR(df, 'P1')
+    # ==========================
+    # === FITTING MODELS
+    # ==========================
+
+
+    # === P1 ===================
+
+    my_product = 'P1'
+    competitors = ['C1','C2','C3','C5','C6']
+    if my_product in df.columns:
+        df.drop(my_product, axis=1, inplace=True)
+
+
+    # ---- Linear Regression (Baseline) -------------
+
+    mlr = MLR(df, my_product)
     mlr.prepare_data() 
     mlr.make_train_test()
     ans_df_rhs = mlr.df[['prod_id','date_order']]
@@ -192,19 +220,11 @@ if __name__ == "__main__":
     # Predict
     mlr.predict_test()
 
+    # Writing results
+    mlr.merge_result()
+    mlr.write_model_results(output_path)
 
-    # Writing the results to output folder
-    d = {'price': mlr.X_test['price'], 'Y_test': mlr.Y_test, 'Y_pred': mlr.Y_pred}
-    ans_df = pd.DataFrame(data=d)
-    ans_df = pd.merge(ans_df, ans_df_rhs, how='left', left_index = True, right_index = True)
-    ans_df.to_csv(output_path + 'mlr_' + my_product + '.csv',index = False)
-
-    print ans_df[['prod_id','date_order','price','Y_test','Y_pred']].head(10)
-
-    # #### Gradient Boosting
-
-    my_product = 'P1'
-    competitors = ['C1','C2','C3','C5','C6']
+    # ----- Gradient Boosting ------------------------
 
     # Creating a Gradient Boosting Object with the dataframe and a given product
     gb = GBM(df, my_product) 
@@ -212,8 +232,16 @@ if __name__ == "__main__":
 
     # Removing rows where there is no price for any competitor
     gb.rem_rows_comp_NA(competitors)
-    for comp in competitors:
-        gb.fill_comp_price_NA(comp,competitors)
+
+    # Fill missing values for competitors price
+    gb.fill_comp_price_NA(competitors)
+        
+    # Fill missing values for other product's price
+    aux_list = []
+    aux_list.append(my_product)
+    products = set(all_products).difference(set(list(aux_list)))
+    for prod in products:
+        gb.fill_prod_price_NA(prod)
 
     # Creating a training and a test set to evaluate model later
     gb.make_train_test()
@@ -221,92 +249,16 @@ if __name__ == "__main__":
     gb.select_X_Y(Y = 'qty_order', X_drop = ['prod_id','revenue','date_order'])
 
     # Fit Model
-    params = {'n_estimators': 1000, 'max_depth': 2, 'max_features': 'sqrt', 'random_state': 5}
+    params = {'n_estimators': 48, 'max_depth': 3, 'max_features': 'sqrt', 'random_state': 5}
     gb.fit_gb(params)
 
     # Predict
     gb.predict_test()
 
-    # Writing the results to output folder
-    d = {'price': gb.X_test['price'], 'Y_test': gb.Y_test, 'Y_pred': gb.Y_pred}
-    ans_df = pd.DataFrame(data=d)
-    ans_df = pd.merge(ans_df, ans_df_rhs, how='left', left_index = True, right_index = True)
-    ans_df.to_csv(output_path + my_product + '.csv',index = False)
+    # Writing results
+    gb.merge_result()
+    gb.write_model_results(output_path)
 
     # Plot feature importance
     gb.plot_feature_importance(gb.n_regressors)
-
-    print ans_df[['prod_id','date_order','price','Y_test','Y_pred']].head(10)
-
-
-    # ### P2
-
-    my_product = 'P2'
-    competitors = ['C1','C2','C3','C4','C5','C6']
-
-    # Creating a Gradient Boosting Object with the dataframe and a given product
-    gb = GBM(df, my_product) 
-    gb.prepare_data()
-
-    # Removing rows where there is no price for any competitor
-    gb.rem_rows_comp_NA(competitors)
-    for comp in competitors:
-        gb.fill_comp_price_NA(comp,competitors)
-
-    # Creating a training and a test set to evaluate model later
-    gb.make_train_test()
-    gb.select_X_Y(Y = 'qty_order', X_drop = ['prod_id','revenue','date_order'])
-
-    # Fit Model
-    params = {'n_estimators': 1000, 'max_depth': 2, 'max_features': 'sqrt', 'random_state': 5}
-    gb.fit_gb(params)
-
-    # Predict
-    gb.predict_test()
-
-    # Writing the results to output folder
-    d = {'price': gb.X_test['price'], 'Y_test': gb.Y_test, 'Y_pred': gb.Y_pred}
-    ans_df = pd.DataFrame(data=d)
-    ans_df.to_csv(output_path + my_product + '.csv')
-
-    # Plot feature importance
-    gb.plot_feature_importance(gb.n_regressors)
-
-
-    # ### P3
-
-    my_product = 'P3'
-    competitors = ['C1','C2','C3','C4','C5','C6']
-
-    # Creating a Gradient Boosting Object with the dataframe and a given product
-    gb = GBM(df, my_product) 
-    gb.prepare_data()
-
-    # Removing rows where there is no price for any competitor
-    gb.rem_rows_comp_NA(competitors)
-    for comp in competitors:
-        gb.fill_comp_price_NA(comp,competitors)
-
-    # Creating a training and a test set to evaluate model later
-    gb.make_train_test()
-    gb.select_X_Y(Y = 'qty_order', X_drop = ['prod_id','revenue','date_order'])
-
-    # Fit Model
-    params = {'n_estimators': 1000, 'max_depth': 2, 'max_features': 'sqrt', 'random_state': 5}
-    gb.fit_gb(params)
-
-    # Predict
-    gb.predict_test()
-
-    # Writing the results to output folder
-    d = {'price': gb.X_test['price'], 'Y_test': gb.Y_test, 'Y_pred': gb.Y_pred}
-    ans_df = pd.DataFrame(data=d)
-    ans_df.to_csv(output_path + my_product + '.csv')
-
-    # Plot feature importance
-    gb.plot_feature_importance(gb.n_regressors)
-
-
-
-
 
