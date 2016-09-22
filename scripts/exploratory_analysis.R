@@ -125,6 +125,46 @@ p
 
 ggsave(paste(my_product, "qty_b2w_price.png", sep = "_"), p, path = img_path)
 
+# Qty sold of Product A given B2W's price of Other Products and the price of A itself
+scp_df <- merge(sales, sales[,c("prod_id","date_order","price")], by = c("date_order"), all= TRUE)
+my_product <- "P1"
+scp_df <- scp_df[scp_df$prod_id.x == my_product,] #choosing Product A
+scp_df <- scp_df[(scp_df$prod_id.y == "P9"),] #choosing Product P9
+my_title <- paste ("Quantity sold of ", my_product, "given P1's price and B2W's price of Other Products \n", sep = " ")
+p <- ggplot(scp_df, aes(price.x, price.y[])) + theme_bw()
+p <- p + geom_point(aes(colour = qty_order), size = 2.0)
+p <- p + labs(title = my_title, x = paste(my_product, "'s Price",  sep = " "), y = "Other Product's Price")
+p <- p + facet_wrap(~prod_id.y, scales = "free") + geom_smooth(se = FALSE, colour = brand_green)
+p <- p + scale_colour_gradient(low = "red", high = "blue")
+p
+
+ggsave(paste(my_product, "qty_b2w_price.png", sep = "_"), p, path = img_path)
+
+# 4D plot P1 qty by (P1 price, P9 price, Day of the week, P6 price)
+scp_df <- merge(sales, sales[,c("prod_id","date_order","price")], by = c("date_order"), all= TRUE)
+my_product <- "P1"
+scp_df <- scp_df[scp_df$prod_id.x == my_product,] #choosing Product A
+scp_df <- scp_df[(scp_df$prod_id.y == "P6") | (scp_df$prod_id.y == "P9"),] #choosing Products P6 and P9
+my_title <- paste ("Quantity sold of ", my_product, "given P1's price and B2W's price of Other Products \n", sep = " ")
+p <- ggplot(scp_df, aes(day_week, price.y)) + theme_bw()
+p <- p + geom_point(aes(colour = price.x, size = qty_order, alpha = qty_order))
+p <- p + labs(title = my_title, x = "Day of the week", y = paste("Other product's Price",  sep = " "))
+p <- p + facet_wrap(~prod_id.y, scales = "free")
+p <- p + scale_colour_gradient(low = "red", high = "blue")
+p
+
+# 5D
+scp_df2 <- spread(scp_df, prod_id.y, price.y)
+my_title <- paste ("Quantity sold of ", my_product, "given P1's price and B2W's price of Other Products \n", sep = " ")
+p <- ggplot(scp_df2, aes(P6, P9)) + theme_bw()
+p <- p + geom_point(aes(colour = price.x, size = qty_order))
+p <- p + labs(title = my_title, x = "P6", y = paste("P9",  sep = " "))
+p <- p + facet_wrap(~day_week, scales = "free")
+p <- p + scale_colour_gradient(low = "red", high = "blue")
+p
+
+
+
 # Qty sold of Product A competitor's price for Product A
 scp_df <- merge(sales, price_im, by = c("prod_id", "date_order"), all.y = TRUE)
 my_product <- "P2"
@@ -209,6 +249,6 @@ ggsave("pred_results_P1.png", p, path = img_path)
 # Reshaping the data to perform a join
 price_im_wide <- spread(price_im, competitor, competitor_price)
 
-# Getting the competitor's prices into the sales table
+# Getting the BTW's prices into the sales table
 df <- merge(sales, price_im_wide, by = c("prod_id", "date_order"), all.x= TRUE)
 
