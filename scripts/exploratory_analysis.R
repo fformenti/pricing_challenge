@@ -16,6 +16,8 @@ require("RPostgreSQL")
 source("my_pass.r")
 
 img_path <- "../analysis/viz/"
+brand_green <- "#00e68a"
+
 # loads the PostgreSQL driver
 drv <- dbDriver("PostgreSQL")
 # creates a connection to the postgres database
@@ -54,7 +56,6 @@ price_im <- aggregate(x = list(competitor_price = price_im$competitor_price),
 # Exploratory Plots
 #=================================
 
-brand_green <- "#00e68a"
 
 # ------- Times Series ---------
 # Daily 
@@ -202,16 +203,6 @@ p
 
 ggsave(paste(my_product, "qty_b2w_and_comp_price.png", sep = "_"), p, path = img_path)
 
-# # Heatmap ran out of memory
-# # Error:long vectors not supported yet: ../../../../R-3.2.1/src/main/memory.c:1648
-# p <- ggplot(scp_df, aes(price, competitor_price, fill = qty_order)) + geom_raster()
-# p <- p + theme_bw()  
-# p <- p + labs(title = my_title, x = "B2W Price", y = "Comp Price")
-# p <- p + facet_wrap(~competitor, scales = "free") 
-# p
-# 
-# ggsave(paste(my_product, "qty_prices_heatmap.png", sep = "_"), p, path = img_path)
-
 # ----- Relation with Categorical Variables
 # First we will take a look at how the days of the week impact the sales of each product
 weekday_sales <- aggregate(x = list(qty_order = sales$qty_order), 
@@ -222,7 +213,6 @@ my_title <-"Average Quantity Sold \n"
 p <- ggplot(weekday_sales, aes(day_week, qty_order)) + theme_bw()
 p <- p + geom_bar(fill = "black", stat = "identity") 
 p <- p + labs(title = my_title, x = "Day of the Week", y = "Quantity Sold")
-#p <- p + scale_colour_gradient(low = "black", high = brand_green)
 p <- p + facet_wrap(~prod_id, scales = "free_y")
 p <- p + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
 p
@@ -232,15 +222,45 @@ ggsave("dow_avg_sales.png", p, path = img_path)
 #=================================
 # Plotting Results
 #=================================
-file_path <- "/Users/felipeformentiferreira/Documents/github_portfolio/pricing_challenge/data/output/P1.csv"
+my_product <- "P1"
+path <- "/Users/felipeformentiferreira/Documents/github_portfolio/pricing_challenge/data/output/"
+
+# MLR
+my_model <- "MLR"
+file_path <- paste(path, my_product,"_", my_model,".csv", sep = "")
 scp_df_wide <- read.csv(file_path, stringsAsFactors = F)
+
+scp_df_wide <- scp_df_wide[,c("prod_id","date_order","Y_test","Y_pred")]
+scp_df_wide$date_order <- as.Date(scp_df_wide$date_order)
 scp_df <- gather(scp_df_wide, obs_type, qty_sold, Y_pred:Y_test, factor_key=TRUE)
 
-p <- ggplot(scp_df, aes(price, qty_sold)) + geom_point(aes(colour = obs_type))
-p <- p + theme_bw() + scale_color_manual(values=c("goldenrod1","dodgerblue4")) 
+my_title <- paste (my_model," prediction's for product", my_product, " \n", sep = " ")
+p <- ggplot(scp_df, aes(date_order, qty_sold)) + geom_point(aes(colour = obs_type))
+p <- p + theme_bw() + scale_color_manual(values=c(brand_green,"black")) 
+p <- p + geom_line(aes(colour = obs_type))
+p <- p + labs(title = my_title, x = "", y = "Quantity sold")
 p
 
-ggsave("pred_results_P1.png", p, path = img_path)
+ggsave(paste(my_product,my_model,"prediction_ts.png", sep = "_"), p, path = img_path)
+
+# GBR
+my_model <- "GBR"
+file_path <- paste(path, my_product,"_", my_model,".csv", sep = "")
+scp_df_wide <- read.csv(file_path, stringsAsFactors = F)
+
+scp_df_wide <- scp_df_wide[,c("prod_id","date_order","Y_test","Y_pred")]
+scp_df_wide$date_order <- as.Date(scp_df_wide$date_order)
+scp_df <- gather(scp_df_wide, obs_type, qty_sold, Y_pred:Y_test, factor_key=TRUE)
+
+my_title <- paste (my_model," prediction's for product", my_product, " \n", sep = " ")
+p <- ggplot(scp_df, aes(date_order, qty_sold)) + geom_point(aes(colour = obs_type))
+p <- p + theme_bw() + scale_color_manual(values=c(brand_green,"black")) 
+p <- p + geom_line(aes(colour = obs_type))
+p <- p + labs(title = my_title, x = "", y = "Quantity sold")
+p
+
+ggsave(paste(my_product,my_model,"prediction_ts.png", sep = "_"), p, path = img_path)
+
 
 #=================================
 # New Features

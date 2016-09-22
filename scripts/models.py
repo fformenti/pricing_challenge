@@ -8,8 +8,6 @@ import matplotlib.pyplot as plt
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn import linear_model
 from sklearn import preprocessing
-from sklearn.preprocessing import Imputer
-from sklearn.metrics import mean_squared_error
 
 from sklearn import cross_validation, metrics   #Additional scklearn functions
 from sklearn.grid_search import GridSearchCV   #Perforing grid search
@@ -24,7 +22,10 @@ def reading(host, DB, username, password):
     query = "SELECT * FROM b2w_schema.sales_agg;"
     sales = psql.read_sql(query, connection)
     # Here I'm only selecting immeadiate pay
-    query = "SELECT prod_id,date_order,competitor, min(competitor_price) as competitor_price FROM b2w_schema.comp_prices             GROUP BY prod_id,date_order,competitor,pay_type             HAVING pay_type = 2;"
+    query = "SELECT prod_id,date_order,competitor, min(competitor_price) as competitor_price \
+    FROM b2w_schema.comp_prices  \
+    GROUP BY prod_id,date_order,competitor,pay_type \
+    HAVING pay_type = 2;"
     price_im = psql.read_sql(query, connection)
     return (sales,price_im)
 
@@ -35,6 +36,23 @@ class ml_models(object):
         self.df = data
         self.product = product
         self.name = name
+
+    def qty_lag(self):
+        self.df.sort(['date_order'], ascending=[1], inplace = True)
+        self.df['qty_lag_1'] = self.df['qty_order'].shift(1)
+        self.df.loc[0,('qty_lag_1')] = self.df.loc[1,('qty_lag_1')]
+
+        # self.df['qty_lag_2'] = self.df['qty_lag_1'].shift(1)
+        # self.df.loc[0,('qty_lag_2')] = self.df.loc[1,('qty_lag_2')]
+
+        # self.df['qty_lag_3'] = self.df['qty_lag_2'].shift(1)
+        # self.df.loc[0,('qty_lag_3')] = self.df.loc[1,('qty_lag_3')]
+
+    # def cumsum_lag_3(self):
+    #     lag_list = ['qty_lag_2','qty_lag_3']
+    #     self.df['cumsum_lag_3'] = self.df[lag_list].sum(axis=1)
+    #     self.df.drop(lag_list, axis=1, inplace = True)
+
 
     def prepare_data(self):
         # selecting a specific product to analyse
@@ -47,20 +65,9 @@ class ml_models(object):
         le_day_week = preprocessing.LabelEncoder()
         self.df['day_week'] = le_day_week.fit_transform(self.df['day_week'])
         self.df['month'] = le_day_week.fit_transform(self.df['month'])
-    
-    def qty_lag_1(self):
-        # Quantity sold from previous day
-        self.df.sort(['date_order'], ascending=[1], inplace = True)
-        self.df['qty_lag_1'] = self.df['qty_order'].shift(1)
-        self.df.loc[0,('qty_lag_1')] = self.df.loc[1,('qty_lag_1')]
-    
-    def cumsum_lag_3(self):
-        pass
-    
-    
-    def delta_lag2_lag1(self):
-        pass
-    
+
+        # Creating a lag1 of quantity sold
+        self.qty_lag()
     
     def rem_rows_comp_NA(self, cols):
         na_rows = self.df[cols].isnull().sum(axis=1)
@@ -105,15 +112,19 @@ class ml_models(object):
         # Total number of regressors
         self.n_regressors = len(self.X_test.columns)
 
-    def predict_test(self, print_mse = True):
+    def predict_test(self, print_results = True):
         # Predict and update dataset
         self.Y_pred = self.clf.predict(self.X_test)
-        mse = mean_squared_error(self.Y_test, self.Y_pred)
-        if print_mse:
-            print "MSE: %.4f" % mean_squared_error(self.Y_test, self.Y_pred)
+        self.mse = metrics.mean_squared_error(self.Y_test, self.Y_pred)
+        self.mae = metrics.mean_absolute_error(self.Y_test, self.Y_pred)
+
+    def print_metrics(self, regression_metrics = True):
+        print 'Model: ', self.name
+        if regression_metrics:
+            print "MAE: %.4f" % self.mae
+            print "MSE: %.4f" % self.mse
 
     def merge_result(self):
-        #d = {'price': self.X_test['price'], 'Y_test': self.Y_test, 'Y_pred': self.Y_pred}
         d = {'Y_test': self.Y_test, 'Y_pred': self.Y_pred}
         df = pd.DataFrame(data=d)
         self.df_test = pd.merge(self.df_test, df, how='left', left_index = True, right_index = True)
@@ -123,13 +134,20 @@ class ml_models(object):
         self.df_test.to_csv(output_path + self.product + '_' + self.name  + '.csv',index = False)
 
 class GBM(ml_models):
-    # Gradient Boosting
+    # Gradient Boosting Regression
     def __init__(self, data, product):
         ml_models.__init__(self, data, product, name = "GBR")
 
+    def grid_search(self, params):
+        # Finding best parameters
+        gsearch = GridSearchCV(estimator = GradientBoostingRegressor(learning_rate=0.1, \
+            min_samples_split=500,min_samples_leaf=50,max_depth=8,max_features='sqrt',\
+            subsample=0.8,random_state=5), param_grid = params, n_jobs=4,iid=False, cv=5)
+        gsearch.fit(self.X_train, self.Y_train)
+        self.grid_scores, self.best_params = gsearch.grid_scores_, gsearch.best_params_
+
     def fit_gb(self, params):
         # Fit model
-        print self.X_train.columns
         self.clf = GradientBoostingRegressor(**params)
         self.clf.fit(self.X_train, self.Y_train)
 
@@ -162,11 +180,10 @@ class MLR(ml_models):
         # Fit model
         self.clf = linear_model.LinearRegression(fit_intercept=False)
         self.clf.fit(self.X_train, self.Y_train)
-        print self.clf.coef_
+        self.clf.coef = self.clf.coef_
 
 
 if __name__ == '__main__':
-
 
     # Product List
     all_products = ['P1','P2','P3','P4','P5','P6','P7','P8','P9']
@@ -184,50 +201,34 @@ if __name__ == '__main__':
     sales, price_im = reading(host, DB, username, password)
 
     # Reshaping the data to perform a join in order to get Competitor's Prices
-    price_im_wide = pd.pivot_table(price_im, index = ['prod_id','date_order'], columns = ['competitor'], values = 'competitor_price')
+    price_im_wide = pd.pivot_table(price_im, index = ['prod_id','date_order'], \
+        columns = ['competitor'], values = 'competitor_price')
     price_im_wide.reset_index(inplace = True)
-    df = pd.merge(sales, price_im_wide, how='left', on=['prod_id','date_order'])
+    master_df = pd.merge(sales, price_im_wide, how='left', on=['prod_id','date_order'])
 
-    # Reshaping the data to perform a join in order to get the Product's Prices
-    day_price_prod = df[['prod_id','date_order','price']]
-    day_price_prod_wide = pd.pivot_table(day_price_prod, index = ['date_order'], columns = ['prod_id'], values = 'price')
-    day_price_prod_wide.reset_index(inplace = True)
-    df = pd.merge(df, day_price_prod_wide, how='left', on=['date_order'])
-
+    # # Reshaping the data to perform a join in order to get the Product's Prices
+    # day_price_prod = master_df[['prod_id','date_order','price']]
+    # day_price_prod_wide = pd.pivot_table(day_price_prod, index = ['date_order'], \
+    #     columns = ['prod_id'], values = 'price')
+    # day_price_prod_wide.reset_index(inplace = True)
+    # master_df = pd.merge(master_df, day_price_prod_wide, how='left', on=['date_order'])
 
     # ==========================
     # === FITTING MODELS
     # ==========================
 
-
     # === P1 ===================
 
     my_product = 'P1'
     competitors = ['C1','C2','C3','C5','C6']
-    if my_product in df.columns:
-        df.drop(my_product, axis=1, inplace=True)
 
-
-    # ---- Linear Regression (Baseline) -------------
-
-    mlr = MLR(df, my_product)
-    mlr.prepare_data() 
-    mlr.make_train_test()
-    ans_df_rhs = mlr.df[['prod_id','date_order']]
-    mlr.select_X_Y(Y = 'qty_order', X_keep = ['price'])
-    mlr.fit_mlr()
-
-    # Predict
-    mlr.predict_test()
-
-    # Writing results
-    mlr.merge_result()
-    mlr.write_model_results(output_path)
+    # if my_product in master_df.columns:
+    #     df = master_df.drop(my_product, axis=1, inplace=False)
 
     # ----- Gradient Boosting ------------------------
 
     # Creating a Gradient Boosting Object with the dataframe and a given product
-    gb = GBM(df, my_product) 
+    gb = GBM(master_df, my_product) 
     gb.prepare_data()
 
     # Removing rows where there is no price for any competitor
@@ -237,23 +238,26 @@ if __name__ == '__main__':
     gb.fill_comp_price_NA(competitors)
         
     # Fill missing values for other product's price
-    aux_list = []
-    aux_list.append(my_product)
-    products = set(all_products).difference(set(list(aux_list)))
-    for prod in products:
-        gb.fill_prod_price_NA(prod)
+    # aux_list = []
+    # aux_list.append(my_product)
+    # products = set(all_products).difference(set(list(aux_list)))
+    # for prod in products:
+    #     gb.fill_prod_price_NA(prod)
 
     # Creating a training and a test set to evaluate model later
     gb.make_train_test()
-    ans_df_rhs = gb.df[['prod_id','date_order']]
     gb.select_X_Y(Y = 'qty_order', X_drop = ['prod_id','revenue','date_order'])
 
-    # Fit Model
-    params = {'n_estimators': 48, 'max_depth': 3, 'max_features': 'sqrt', 'random_state': 5}
-    gb.fit_gb(params)
+    # Grid Search to find best parameters
+    params = {'n_estimators': [50, 100, 300, 500], 'max_depth': [2,3,4], 'max_features': ['sqrt']}
+    gb.grid_search(params)
+
+    # Fitting model with best parameters
+    gb.fit_gb(gb.best_params)
 
     # Predict
     gb.predict_test()
+    gb.print_metrics(regression_metrics = True)
 
     # Writing results
     gb.merge_result()
@@ -261,4 +265,28 @@ if __name__ == '__main__':
 
     # Plot feature importance
     gb.plot_feature_importance(gb.n_regressors)
+
+    # ---- Linear Regression (Baseline) -------------
+
+    # Creating a Gradient Boosting Object with the dataframe and a given product
+    mlr = MLR(master_df, my_product)
+    mlr.prepare_data()
+
+    # Removing rows where there is no price for any competitor
+    mlr.rem_rows_comp_NA(competitors)
+
+    # Creating a training and a test set to evaluate model later
+    mlr.make_train_test()
+    mlr.select_X_Y(Y = 'qty_order', X_keep = ['price'])
+
+    # Fitting model with best parameters
+    mlr.fit_mlr()
+
+    # Predict
+    mlr.predict_test()
+    mlr.print_metrics(regression_metrics = True)
+
+    # Writing results
+    mlr.merge_result()
+    mlr.write_model_results(output_path)
 
